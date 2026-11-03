@@ -1,0 +1,46 @@
+{
+  "tools": [
+    {
+      "name": "search_issues",
+      "description": "Search project issues by filter criteria (example MCP tool).",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "filter": {
+            "$ref": "#/$defs/IssueFilter",
+            "description": "Structured issue filter."
+          },
+          "AssigneeEmail": {
+            "type": "string",
+            "format": "email",
+            "pattern": "^[a-zA-Z0-9._%+-]+@example\\.com$"
+          },
+          "cursor": {
+            "anyOf": [
+              { "type": "string" },
+              { "type": "null" }
+            ],
+            "default": null
+          }
+        },
+        "required": ["filter"],
+        "$defs": {
+          "IssueFilter": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "const": "open"
+              },
+              "labels": {
+                "type": ["array", "null"],
+                "items": { "type": "string" }
+              }
+            },
+            "required": ["state"]
+          }
+        }
+      }
+    }
+  ]
+}
