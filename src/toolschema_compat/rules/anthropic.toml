@@ -1,0 +1,191 @@
+target = "anthropic"
+provider = "Anthropic Claude Tool Use (input_schema)"
+schema_version = "2026-11-02"
+last_verified = "2026-11-02"
+primary_source = "https://docs.anthropic.com/en/docs/build-with-claude/tool-use/overview"
+secondary_sources = [
+    "https://docs.anthropic.com/en/docs/build-with-claude/structured-outputs",
+]
+notes = """
+Anthropic Claude tool definitions require `input_schema` to be a valid JSON Schema object \
+with top-level `type: "object"`. When strict tool use / structured outputs are enabled, \
+objects require `additionalProperties: false`, `oneOf` and OpenAPI `nullable` must be normalized, \
+and unsupported validation constraints (`pattern`, `format`, numeric bounds) are stripped. \
+Undocumented server-side schema complexity thresholds across Claude model tiers are marked NEEDS_SOURCE.
+"""
+
+[policy]
+inline_refs = true
+strip_defs = true
+disallow_type_array = false
+nullable_style = "type_array"
+collapse_anyof_null = false
+convert_const_to_enum = true
+convert_oneof_to_anyof = true
+merge_allof = true
+require_root_object = true
+require_additional_properties_false = true
+disallow_additional_properties = false
+require_all_properties_in_required = false
+clean_orphan_required = true
+allowed_formats = []
+strip_metadata_keywords = [
+    "$schema",
+    "$id",
+    "$comment",
+    "$anchor",
+    "default",
+    "examples",
+    "example",
+    "readOnly",
+    "writeOnly",
+    "deprecated",
+]
+strip_validation_constraints = [
+    "pattern",
+    "format",
+    "minLength",
+    "maxLength",
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+    "multipleOf",
+    "minItems",
+    "maxItems",
+    "uniqueItems",
+    "minProperties",
+    "maxProperties",
+    "patternProperties",
+    "unevaluatedProperties",
+    "dependentRequired",
+    "dependentSchemas",
+    "dependencies",
+    "if",
+    "then",
+    "else",
+    "not",
+    "contains",
+    "minContains",
+    "maxContains",
+    "prefixItems",
+    "contentMediaType",
+    "contentEncoding",
+]
+
+[[rules]]
+id = "ANTHROPIC_ROOT_OBJECT"
+category = "root_object"
+description = "Anthropic `input_schema` must have top-level `type: \"object\"` and cannot be a top-level union or primitive."
+source_url = "https://docs.anthropic.com/en/docs/build-with-claude/tool-use/overview"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "ANTHROPIC_ADDITIONAL_PROPERTIES"
+category = "open_object"
+description = "Object schemas in Anthropic structured tool use should set `additionalProperties: false`."
+source_url = "https://docs.anthropic.com/en/docs/build-with-claude/structured-outputs"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "ANTHROPIC_MAP_NARROWED"
+category = "open_object_lossy"
+description = "Forcing `additionalProperties: false` on an object that explicitly allowed extra/map properties narrows the schema."
+source_url = "https://docs.anthropic.com/en/docs/build-with-claude/structured-outputs"
+last_verified = "2026-11-02"
+lossy = true
+verification_status = "verified"
+
+[[rules]]
+id = "ANTHROPIC_REF_DEFS"
+category = "ref_defs"
+description = "`$ref` and `$defs` are inlined acyclically to avoid unresolved reference errors across tool adapters."
+source_url = "https://docs.anthropic.com/en/docs/build-with-claude/structured-outputs"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "ANTHROPIC_REF_CYCLE"
+category = "ref_cycle"
+description = "Cyclic or unresolvable `$ref` references are safely truncated to a closed object stub."
+source_url = "https://docs.anthropic.com/en/docs/build-with-claude/structured-outputs"
+last_verified = "2026-11-02"
+lossy = true
+verification_status = "verified"
+
+[[rules]]
+id = "ANTHROPIC_NULLABLE_KEYWORD"
+category = "nullable_keyword"
+description = "OpenAPI `nullable: true` is not valid in Anthropic JSON Schema; use `type: [T, \"null\"]` or `anyOf`."
+source_url = "https://docs.anthropic.com/en/docs/build-with-claude/tool-use/overview"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "ANTHROPIC_ONEOF"
+category = "oneof_to_anyof"
+description = "`oneOf` is not supported in Anthropic structured tool schemas; converted to `anyOf`."
+source_url = "https://docs.anthropic.com/en/docs/build-with-claude/structured-outputs"
+last_verified = "2026-11-02"
+lossy = true
+verification_status = "verified"
+
+[[rules]]
+id = "ANTHROPIC_ALLOF"
+category = "allof_merge"
+description = "`allOf` subschemas are flattened into a single object schema."
+source_url = "https://docs.anthropic.com/en/docs/build-with-claude/structured-outputs"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "ANTHROPIC_CONST"
+category = "const_keyword"
+description = "`const` is normalized to a single-value `enum`."
+source_url = "https://docs.anthropic.com/en/docs/build-with-claude/structured-outputs"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "ANTHROPIC_UNSUPPORTED_CONSTRAINT"
+category = "unsupported_constraints"
+description = "Validation constraint (`pattern`, `format`, `minimum`, `maximum`, `minLength`, etc.) is not supported in Anthropic structured tool schemas and is stripped."
+source_url = "https://docs.anthropic.com/en/docs/build-with-claude/structured-outputs"
+last_verified = "2026-11-02"
+lossy = true
+verification_status = "verified"
+
+[[rules]]
+id = "ANTHROPIC_UNSUPPORTED_KEYWORD"
+category = "unsupported_keywords"
+description = "Non-validation metadata keyword (`$schema`, `default`, `examples`, etc.) is stripped."
+source_url = "https://docs.anthropic.com/en/docs/build-with-claude/structured-outputs"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "ANTHROPIC_ORPHAN_REQUIRED"
+category = "orphan_required"
+description = "Keys listed in `required` must exist in `properties`."
+source_url = "https://docs.anthropic.com/en/docs/build-with-claude/tool-use/overview"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "ANTHROPIC_SCHEMA_COMPLEXITY_LIMIT"
+category = "unverified_limit"
+description = "NEEDS_SOURCE: Exact server-side limit on total union branches and nested object depth for Claude tool use is not published as a fixed number."
+source_url = "https://docs.anthropic.com/en/docs/build-with-claude/tool-use/overview"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "NEEDS_SOURCE"

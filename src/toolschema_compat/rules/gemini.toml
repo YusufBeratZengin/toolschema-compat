@@ -1,0 +1,198 @@
+target = "gemini"
+provider = "Google Gemini API (FunctionDeclaration Schema)"
+schema_version = "2026-11-02"
+last_verified = "2026-11-02"
+primary_source = "https://ai.google.dev/gemini-api/docs/function-calling"
+secondary_sources = [
+    "https://ai.google.dev/api/caching#Schema",
+    "https://github.com/google-gemini/gemini-cli/issues/13326",
+    "https://github.com/taylorwilsdon/google_workspace_mcp/issues/1099",
+    "https://github.com/thClaws/thClaws/issues/172",
+]
+notes = """
+Gemini function calling accepts a restricted OpenAPI 3.0 Schema subset under `parameters` \
+and a bounded JSON Schema subset under `parametersJsonSchema`. Even with `parametersJsonSchema`, \
+unresolved `$defs`/`$ref` references and unsupported keywords trigger HTTP 400 Invalid Argument errors. \
+Exact server-side nesting depth and total property limits across all Gemini model variants are \
+undocumented and marked NEEDS_SOURCE.
+"""
+
+[policy]
+inline_refs = true
+strip_defs = true
+disallow_type_array = true
+nullable_style = "openapi_nullable"
+collapse_anyof_null = true
+convert_const_to_enum = true
+convert_oneof_to_anyof = true
+merge_allof = true
+require_root_object = true
+require_additional_properties_false = false
+disallow_additional_properties = true
+require_all_properties_in_required = false
+clean_orphan_required = true
+allowed_formats = ["enum", "date-time", "float", "double", "int32", "int64"]
+strip_metadata_keywords = [
+    "$schema",
+    "$id",
+    "$comment",
+    "$anchor",
+    "default",
+    "examples",
+    "example",
+    "readOnly",
+    "writeOnly",
+    "deprecated",
+]
+strip_validation_constraints = [
+    "pattern",
+    "minLength",
+    "maxLength",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+    "multipleOf",
+    "uniqueItems",
+    "minProperties",
+    "maxProperties",
+    "patternProperties",
+    "unevaluatedProperties",
+    "dependentRequired",
+    "dependentSchemas",
+    "dependencies",
+    "if",
+    "then",
+    "else",
+    "not",
+    "contains",
+    "minContains",
+    "maxContains",
+    "prefixItems",
+    "contentMediaType",
+    "contentEncoding",
+]
+
+[[rules]]
+id = "GEMINI_REF_DEFS"
+category = "ref_defs"
+description = "Gemini rejects `$ref`, `$defs`, and `definitions`; references must be inlined acyclically."
+source_url = "https://github.com/google-gemini/gemini-cli/issues/13326"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "GEMINI_REF_CYCLE"
+category = "ref_cycle"
+description = "Recursive or unresolvable `$ref` cannot be expanded infinitely; cyclic edges are truncated to an object stub."
+source_url = "https://github.com/google-gemini/gemini-cli/issues/13326"
+last_verified = "2026-11-02"
+lossy = true
+verification_status = "verified"
+
+[[rules]]
+id = "GEMINI_TYPE_ARRAY"
+category = "type_array"
+description = "Gemini `Schema.type` must be a single type string, not a JSON Schema type union array."
+source_url = "https://github.com/taylorwilsdon/google_workspace_mcp/issues/1099"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "GEMINI_ANYOF_NULL"
+category = "anyof_null"
+description = "Nullable unions (`anyOf`/`oneOf` with `{\"type\": \"null\"}`) should use `nullable: true` in Gemini schemas."
+source_url = "https://ai.google.dev/api/caching#Schema"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "GEMINI_ONEOF"
+category = "oneof_to_anyof"
+description = "Gemini `Schema` supports `anyOf` but rejects `oneOf`; `oneOf` is relaxed to `anyOf`."
+source_url = "https://ai.google.dev/api/caching#Schema"
+last_verified = "2026-11-02"
+lossy = true
+verification_status = "verified"
+
+[[rules]]
+id = "GEMINI_ALLOF"
+category = "allof_merge"
+description = "Gemini `Schema` rejects `allOf`; subschemas are merged into a single schema node."
+source_url = "https://ai.google.dev/api/caching#Schema"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "GEMINI_CONST"
+category = "const_keyword"
+description = "Gemini `Schema` rejects `const`; single-element `enum` is used instead."
+source_url = "https://ai.google.dev/api/caching#Schema"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "GEMINI_ADDITIONAL_PROPERTIES"
+category = "additional_properties"
+description = "Gemini `parameters` Schema rejects `additionalProperties` with HTTP 400 Invalid Argument."
+source_url = "https://github.com/thClaws/thClaws/issues/172"
+last_verified = "2026-11-02"
+lossy = true
+verification_status = "verified"
+
+[[rules]]
+id = "GEMINI_UNSUPPORTED_CONSTRAINT"
+category = "unsupported_constraints"
+description = "Validation constraint keyword is not supported by Gemini `Schema` and is stripped."
+source_url = "https://ai.google.dev/api/caching#Schema"
+last_verified = "2026-11-02"
+lossy = true
+verification_status = "verified"
+
+[[rules]]
+id = "GEMINI_UNSUPPORTED_FORMAT"
+category = "unsupported_format"
+description = "Gemini `Schema.format` only supports `enum`, `date-time`, `float`, `double`, `int32`, and `int64`."
+source_url = "https://ai.google.dev/api/caching#Schema"
+last_verified = "2026-11-02"
+lossy = true
+verification_status = "verified"
+
+[[rules]]
+id = "GEMINI_UNSUPPORTED_KEYWORD"
+category = "unsupported_keywords"
+description = "Non-validation JSON Schema metadata keyword (`$schema`, `default`, `examples`, etc.) is rejected by Gemini `Schema`."
+source_url = "https://github.com/thClaws/thClaws/issues/172"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "GEMINI_ROOT_OBJECT"
+category = "root_object"
+description = "Top-level tool parameter schema must be of `type: \"object\"`."
+source_url = "https://ai.google.dev/gemini-api/docs/function-calling"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "GEMINI_ORPHAN_REQUIRED"
+category = "orphan_required"
+description = "Keys listed in `required` must exist in `properties` for Gemini function declarations."
+source_url = "https://ai.google.dev/api/caching#Schema"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "GEMINI_MAX_NESTING_AND_PROPERTIES"
+category = "unverified_limit"
+description = "NEEDS_SOURCE: Exact server-side maximum nesting depth and property count limits across Gemini model endpoints are not officially specified as fixed constants."
+source_url = "https://ai.google.dev/gemini-api/docs/function-calling"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "NEEDS_SOURCE"

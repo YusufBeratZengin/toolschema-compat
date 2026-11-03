@@ -1,0 +1,201 @@
+target = "openai-strict"
+provider = "OpenAI Structured Outputs & Strict Function Calling"
+schema_version = "2026-11-02"
+last_verified = "2026-11-02"
+primary_source = "https://platform.openai.com/docs/guides/structured-outputs#supported-schemas"
+secondary_sources = [
+    "https://github.com/prism-php/prism/issues/940",
+    "https://github.com/coleam00/Archon/issues/1843",
+]
+notes = """
+OpenAI strict mode (`strict: true`) enforces a constrained JSON Schema subset: every object \
+must set `additionalProperties: false`, every property in `properties` must be listed in `required` \
+(optional fields must be nullable unions), the root schema must be an object, and validation \
+constraints such as `pattern` or `format` are rejected unless stripped. Model-specific token \
+complexity thresholds for compiled grammars are marked NEEDS_SOURCE.
+"""
+
+[policy]
+inline_refs = true
+strip_defs = true
+disallow_type_array = false
+nullable_style = "type_array"
+collapse_anyof_null = false
+convert_const_to_enum = true
+convert_oneof_to_anyof = true
+merge_allof = true
+require_root_object = true
+require_additional_properties_false = true
+disallow_additional_properties = false
+require_all_properties_in_required = true
+clean_orphan_required = true
+allowed_formats = []
+strip_metadata_keywords = [
+    "$schema",
+    "$id",
+    "$comment",
+    "$anchor",
+    "default",
+    "examples",
+    "example",
+    "readOnly",
+    "writeOnly",
+    "deprecated",
+]
+strip_validation_constraints = [
+    "pattern",
+    "format",
+    "minLength",
+    "maxLength",
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+    "multipleOf",
+    "minItems",
+    "maxItems",
+    "uniqueItems",
+    "minProperties",
+    "maxProperties",
+    "patternProperties",
+    "unevaluatedProperties",
+    "dependentRequired",
+    "dependentSchemas",
+    "dependencies",
+    "if",
+    "then",
+    "else",
+    "not",
+    "contains",
+    "minContains",
+    "maxContains",
+    "prefixItems",
+    "contentMediaType",
+    "contentEncoding",
+]
+
+[[rules]]
+id = "OPENAI_STRICT_ADDITIONAL_PROPERTIES"
+category = "open_object"
+description = "Every object schema in OpenAI strict mode must set `additionalProperties: false`."
+source_url = "https://github.com/prism-php/prism/issues/940"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "OPENAI_STRICT_MAP_NARROWED"
+category = "open_object_lossy"
+description = "Forcing `additionalProperties: false` on an object that explicitly allowed extra/map properties narrows the schema."
+source_url = "https://platform.openai.com/docs/guides/structured-outputs#additionalproperties-false-must-always-be-set-in-objects"
+last_verified = "2026-11-02"
+lossy = true
+verification_status = "verified"
+
+[[rules]]
+id = "OPENAI_STRICT_REQUIRED_PROPERTIES"
+category = "optional_properties"
+description = "All properties defined in `properties` must be listed in `required`; optional properties must include `\"null\"` in their type."
+source_url = "https://github.com/coleam00/Archon/issues/1843"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "OPENAI_STRICT_REF_DEFS"
+category = "ref_defs"
+description = "`$ref` with sibling keywords or unresolved `$defs` references are normalized by inlining."
+source_url = "https://platform.openai.com/docs/guides/structured-outputs#supported-schemas"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "OPENAI_STRICT_REF_CYCLE"
+category = "ref_cycle"
+description = "Cyclic or unresolvable `$ref` references are safely truncated to a closed object stub."
+source_url = "https://platform.openai.com/docs/guides/structured-outputs#recursive-schemas-are-supported"
+last_verified = "2026-11-02"
+lossy = true
+verification_status = "verified"
+
+[[rules]]
+id = "OPENAI_STRICT_NULLABLE_KEYWORD"
+category = "nullable_keyword"
+description = "OpenAPI `nullable: true` is not supported in OpenAI strict JSON Schema; use `type: [T, \"null\"]` or `anyOf` with `null`."
+source_url = "https://platform.openai.com/docs/guides/structured-outputs#supported-types"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "OPENAI_STRICT_ONEOF"
+category = "oneof_to_anyof"
+description = "OpenAI strict mode supports `anyOf` but rejects `oneOf`; `oneOf` is converted to `anyOf`."
+source_url = "https://platform.openai.com/docs/guides/structured-outputs#supported-schemas"
+last_verified = "2026-11-02"
+lossy = true
+verification_status = "verified"
+
+[[rules]]
+id = "OPENAI_STRICT_ALLOF"
+category = "allof_merge"
+description = "`allOf` composition is merged into a flat schema node for strict mode compatibility."
+source_url = "https://platform.openai.com/docs/guides/structured-outputs#supported-schemas"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "OPENAI_STRICT_CONST"
+category = "const_keyword"
+description = "`const` is normalized to a single-value `enum` for broad strict tool calling compatibility."
+source_url = "https://platform.openai.com/docs/guides/structured-outputs#supported-schemas"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "OPENAI_STRICT_UNSUPPORTED_CONSTRAINT"
+category = "unsupported_constraints"
+description = "Validation constraint (`pattern`, `format`, `minimum`, `maximum`, `minLength`, etc.) is not supported in OpenAI strict mode and is stripped."
+source_url = "https://platform.openai.com/docs/guides/structured-outputs#supported-properties"
+last_verified = "2026-11-02"
+lossy = true
+verification_status = "verified"
+
+[[rules]]
+id = "OPENAI_STRICT_UNSUPPORTED_KEYWORD"
+category = "unsupported_keywords"
+description = "Non-validation metadata keyword (`$schema`, `default`, `examples`, etc.) is stripped for strict mode."
+source_url = "https://platform.openai.com/docs/guides/structured-outputs#supported-schemas"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "OPENAI_STRICT_ROOT_OBJECT"
+category = "root_object"
+description = "Root schema in OpenAI strict mode must be an object (`type: \"object\"`), not a primitive or top-level union."
+source_url = "https://platform.openai.com/docs/guides/structured-outputs#root-objects-must-not-be-anyof-and-must-be-an-object"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "OPENAI_STRICT_ORPHAN_REQUIRED"
+category = "orphan_required"
+description = "Keys listed in `required` must exist in `properties`."
+source_url = "https://platform.openai.com/docs/guides/structured-outputs#all-fields-must-be-required"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "verified"
+
+[[rules]]
+id = "OPENAI_STRICT_GRAMMAR_COMPILATION_BUDGET"
+category = "unverified_limit"
+description = "NEEDS_SOURCE: Server-side context-free grammar compilation timeout and enum/branch token budget vary by model snapshot and are not published as static schema limits."
+source_url = "https://platform.openai.com/docs/guides/structured-outputs#supported-schemas"
+last_verified = "2026-11-02"
+lossy = false
+verification_status = "NEEDS_SOURCE"
