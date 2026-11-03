@@ -140,3 +140,43 @@ def test_resolve_refs_diamond_reuse_is_lossless() -> None:
         "properties": {"x": {"type": "number"}},
     }
     assert all(not c.lossy for c in changes)
+
+
+def test_check_refs_transitive_and_list_cycle() -> None:
+    ruleset = load_rules("gemini")
+    schema: dict[str, Any] = {
+        "type": "object",
+        "properties": {
+            "outer": {"$ref": "#/$defs/Outer"},
+            "list_cycle": {"$ref": "#/$defs/ListCycle"},
+        },
+        "$defs": {
+            "Outer": {
+                "type": "object",
+                "properties": {
+                    "inner": {"$ref": "#/$defs/Inner"},
+                },
+            },
+            "Inner": {
+                "type": "object",
+                "properties": {"val": {"type": "string"}},
+            },
+            "ListCycle": {
+                "anyOf": [
+                    {"$ref": "#/$defs/ListCycle"},
+                    {"type": "string"},
+                ]
+            },
+        },
+    }
+
+    issues = check_refs(schema, ruleset)
+    fixed, changes = resolve_refs(schema, ruleset)
+    assert len(issues) == 4
+    assert len(changes) == 5
+    assert any(i.path == "$.properties.outer.properties.inner.$ref" for i in issues)
+    assert any(i.lossy and i.path == "$.properties.list_cycle.$ref" for i in issues)
+    assert fixed["properties"]["outer"]["properties"]["inner"] == {
+        "type": "object",
+        "properties": {"val": {"type": "string"}},
+    }

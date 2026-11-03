@@ -6,13 +6,13 @@ import copy
 from typing import Any
 
 import pytest
+
 from tests.fixtures import (
     ALL_TARGET_FIXTURES,
     ANTHROPIC_FIXTURES,
     GEMINI_FIXTURES,
     OPENAI_STRICT_FIXTURES,
 )
-
 from toolschema_compat import (
     SUPPORTED_TARGETS,
     check_schema,
@@ -270,3 +270,101 @@ def test_mcp_tools_list_and_envelope_conversions() -> None:
 
     with pytest.raises(TypeError, match="schema must be a dictionary"):
         fix_schema(["not", "a", "dict"], "gemini")  # type: ignore[arg-type]
+
+
+def test_audit_regressions_idempotency_and_nested_compositions() -> None:
+    # 1. Collapsing anyOf with null when inner branch has oneOf / allOf / pattern
+    nested_anyof_schema: dict[str, Any] = {
+        "type": "object",
+        "properties": {
+            "nested_oneof": {
+                "anyOf": [
+                    {"oneOf": [{"type": "string", "pattern": "^a+$"}, {"type": "integer"}]},
+                    {"type": "null"},
+                ]
+            },
+            "nested_allof": {
+                "anyOf": [
+                    {
+                        "allOf": [
+                            {"properties": {"x": {"type": "string"}}},
+                            {
+                                "properties": {
+                                    "x": {"description": "merged"},
+                                    "y": {"type": "integer"},
+                                }
+                            },
+                        ]
+                    },
+                    {"type": "null"},
+                ]
+            },
+            "map_without_type": {
+                "additionalProperties": {"type": "string"},
+            },
+            "optional_single_anyof": {
+                "anyOf": [{"type": "string"}],
+            },
+            "optional_int_enum": {
+                "enum": [10, 20],
+            },
+            "dup_type_array": {
+                "type": ["string", "string"],
+            },
+            "multi_type_with_null": {
+                "type": ["string", "integer", "null"],
+            },
+            "explicit_nullable_false": {
+                "type": "string",
+                "nullable": False,
+            },
+            "orphan_only_obj": {
+                "type": "object",
+                "properties": {"valid_key": {"type": "string"}},
+                "required": ["missing_key"],
+            },
+        },
+        "required": [
+            "nested_oneof",
+            "nested_allof",
+            "map_without_type",
+            "dup_type_array",
+            "multi_type_with_null",
+            "explicit_nullable_false",
+            "orphan_only_obj",
+        ],
+    }
+
+    for target in SUPPORTED_TARGETS:
+        fixed1, _ = fix_schema(nested_anyof_schema, target)
+        assert check_schema(fixed1, target) == [], f"Failed single-pass check on {target}"
+        fixed2, changes2 = fix_schema(fixed1, target)
+        assert changes2 == [], f"Failed idempotency on {target}"
+        assert fixed2 == fixed1
+
+    # Verify specific normalized shapes
+    fixed_openai, _ = fix_schema(nested_anyof_schema, "openai-strict")
+    assert fixed_openai["properties"]["optional_single_anyof"] == {
+        "type": ["string", "null"],
+    }
+    assert fixed_openai["properties"]["optional_int_enum"] == {
+        "type": ["integer", "null"],
+        "enum": [10, 20, None],
+    }
+    assert fixed_openai["properties"]["map_without_type"]["type"] == "object"
+    assert fixed_openai["properties"]["nested_allof"]["anyOf"][0]["properties"]["x"] == {
+        "type": ["string", "null"],
+        "description": "merged",
+    }
+
+    fixed_gemini, _ = fix_schema(nested_anyof_schema, "gemini")
+    assert fixed_gemini["properties"]["nested_allof"]["properties"]["x"] == {
+        "type": "string",
+        "description": "merged",
+    }
+    assert fixed_gemini["properties"]["dup_type_array"] == {"type": "string"}
+    assert fixed_gemini["properties"]["multi_type_with_null"] == {
+        "anyOf": [{"type": "string"}, {"type": "integer"}],
+        "nullable": True,
+    }
+    assert "required" not in fixed_gemini["properties"]["orphan_only_obj"]

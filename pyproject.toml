@@ -60,6 +60,7 @@ where = ["src"]
 toolschema_compat = ["py.typed", "rules/*.toml"]
 
 [tool.pytest.ini_options]
+pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = "-q"
 markers = [

@@ -19,7 +19,7 @@ else
     exit 1
 fi
 
-export PYTHONPATH="src${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="src"
 
 echo "==> Running ruff lint check..."
 $PYTHON_BIN -m ruff check src tests

@@ -87,7 +87,21 @@ def _make_schema_nullable(node: dict[str, Any], nullable_style: str) -> None:
         if "null" not in node_type:
             node["type"] = [*node_type, "null"]
     elif "anyOf" in node and isinstance(node["anyOf"], list):
-        node["anyOf"] = [*node["anyOf"], {"type": "null"}]
+        non_null_branches = [b for b in node["anyOf"] if not _is_null_branch(b)]
+        if len(non_null_branches) == 1 and _is_simple_type_branch(non_null_branches[0]):
+            del node["anyOf"]
+            branch_copy = copy.deepcopy(non_null_branches[0])
+            scalar_type = str(branch_copy.pop("type"))
+            for k, v in branch_copy.items():
+                if k not in node:
+                    node[k] = v
+            node["type"] = [scalar_type, "null"]
+        else:
+            node["anyOf"] = [*node["anyOf"], {"type": "null"}]
+    elif "enum" in node and isinstance(node["enum"], list):
+        non_null_vals = [v for v in node["enum"] if v is not None]
+        inferred = _infer_const_type(non_null_vals[0]) if non_null_vals else "string"
+        node["type"] = [inferred, "null"]
     else:
         node["type"] = ["string", "null"]
 
@@ -103,7 +117,7 @@ def _merge_allof_branches(
     merged = {k: v for k, v in parent.items() if k != "allOf"}
     merged_props: dict[str, Any] = {}
     if isinstance(merged.get("properties"), dict):
-        merged_props.update(merged["properties"])
+        merged_props.update(copy.deepcopy(merged["properties"]))
     merged_req: list[str] = []
     if isinstance(merged.get("required"), list):
         for r in merged["required"]:
@@ -117,7 +131,21 @@ def _merge_allof_branches(
             continue
         for key, value in branch.items():
             if key == "properties" and isinstance(value, dict):
-                merged_props.update(value)
+                for prop_name, prop_val in value.items():
+                    if (
+                        prop_name in merged_props
+                        and isinstance(merged_props[prop_name], dict)
+                        and isinstance(prop_val, dict)
+                    ):
+                        merged_sub, sub_lossy = _merge_allof_branches(
+                            merged_props[prop_name],
+                            [prop_val],
+                        )
+                        merged_props[prop_name] = merged_sub
+                        if sub_lossy:
+                            lossy = True
+                    else:
+                        merged_props[prop_name] = copy.deepcopy(prop_val)
             elif key == "required" and isinstance(value, list):
                 for r in value:
                     if isinstance(r, str) and r not in merged_req:
@@ -269,6 +297,7 @@ def _transform_single_schema(
                                 source_url=anyof_rule.source_url,
                             )
                         )
+                        return _transform_node(current, path, is_root)
                     elif len(non_null_branches) > 1:
                         current["anyOf"] = [
                             _transform_node(b, f"{path}.anyOf[{i}]", False)
@@ -333,6 +362,7 @@ def _transform_single_schema(
                             source_url=nullable_rule.source_url,
                         )
                     )
+                    return _transform_node(current, path, is_root)
                 else:
                     # Transform non-null branches in place while keeping positions
                     current["anyOf"] = [
@@ -347,31 +377,12 @@ def _transform_single_schema(
                     for i, b in enumerate(raw_branches)
                 ]
 
-        # 4b. If collapsing `anyOf` introduced `const` into `current`, normalize it in the same pass
-        if "const" in current and policy.convert_const_to_enum:
-            const_val = current.pop("const")
-            const_rule = ruleset.rule_for("const_keyword")
-            inferred_type = _infer_const_type(const_val)
-            current["enum"] = [const_val]
-            if "type" not in current:
-                current["type"] = inferred_type
-            changes.append(
-                Change(
-                    rule_id=const_rule.id,
-                    path=f"{path}.const",
-                    action="converted_const_to_enum",
-                    message="Converted `const` keyword to single-element `enum`.",
-                    lossy=False,
-                    source_url=const_rule.source_url,
-                )
-            )
-
         # 5. Handle type arrays vs OpenAPI `nullable: true`
         if policy.disallow_type_array:
             if isinstance(current.get("type"), list):
                 raw_types = [str(t) for t in current["type"]]
                 has_null = "null" in raw_types
-                non_null = [t for t in raw_types if t != "null"]
+                non_null = list(dict.fromkeys(t for t in raw_types if t != "null"))
                 type_rule = ruleset.rule_for("type_array")
                 if len(non_null) == 1:
                     current["type"] = non_null[0]
@@ -441,14 +452,15 @@ def _transform_single_schema(
             nullable_rule = ruleset.rule_for("nullable_keyword")
             if is_nullable:
                 _make_schema_nullable(current, "type_array")
+                msg = 'Converted OpenAPI `nullable` keyword to JSON Schema union with `"null"`.'
+            else:
+                msg = "Removed unsupported OpenAPI `nullable: false` keyword."
             changes.append(
                 Change(
                     rule_id=nullable_rule.id,
                     path=f"{path}.nullable",
                     action="converted_nullable",
-                    message=(
-                        'Converted OpenAPI `nullable` keyword to JSON Schema union with `"null"`.'
-                    ),
+                    message=msg,
                     lossy=False,
                     source_url=nullable_rule.source_url,
                 )
@@ -555,7 +567,11 @@ def _transform_single_schema(
             or "additionalProperties" in current
         )
 
-        if "properties" in current and "type" not in current and "anyOf" not in current:
+        if (
+            ("properties" in current or "additionalProperties" in current)
+            and "type" not in current
+            and "anyOf" not in current
+        ):
             root_rule = ruleset.rule_for("root_object")
             current["type"] = "object"
             is_object = True
@@ -564,7 +580,7 @@ def _transform_single_schema(
                     rule_id=root_rule.id,
                     path=f"{path}.type",
                     action="normalized_root_object",
-                    message='Added missing `type: "object"` to schema with `properties`.',
+                    message='Added missing `type: "object"` to object schema.',
                     lossy=False,
                     source_url=root_rule.source_url,
                 )
@@ -938,7 +954,12 @@ def convert_mcp_tools(
             out["description"] = description
         return out
 
-    if "tools" in fixed_doc and isinstance(fixed_doc["tools"], list):
+    if (
+        "tools" in fixed_doc
+        and isinstance(fixed_doc["tools"], list)
+        and "properties" not in fixed_doc
+        and fixed_doc.get("type") != "object"
+    ):
         return (
             {
                 **fixed_doc,

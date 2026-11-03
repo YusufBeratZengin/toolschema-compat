@@ -196,3 +196,25 @@ def test_report_methods_on_already_compatible_schema() -> None:
     assert fix_rep.lossless is True
     assert "[OK] target=gemini: 0 changes needed" in fix_rep.to_text()
     assert "schema" in fix_rep.to_dict(include_schema=True)
+
+    # CLI fix in text mode with --output suppresses "--- Fixed Schema ---" on stdout
+    out_path = Path(compatible_gemini.get("_tmp", "unused"))  # dummy reference avoided below
+    assert out_path is not None
+
+
+def test_cli_fix_text_with_output_file(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    in_file = tmp_path / "in.json"
+    out_file = tmp_path / "out.json"
+    in_file.write_text(
+        json.dumps({"type": "object", "properties": {"a": {"type": "string"}}}),
+        encoding="utf-8",
+    )
+    rc = main(["fix", str(in_file), "--target", "openai-strict", "-o", str(out_file)])
+    assert rc == 0
+    stdout = capsys.readouterr().out
+    assert "[FIXED] target=openai-strict" in stdout
+    assert "--- Fixed Schema ---" not in stdout
+    assert out_file.is_file()

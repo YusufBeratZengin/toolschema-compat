@@ -172,6 +172,7 @@ def check_refs(
                                 keyword="$ref",
                             )
                         )
+                        _walk(resolved, path, active_refs | {ref_val})
 
             for key, value in node.items():
                 if key in ("$defs", "definitions", "$ref"):
