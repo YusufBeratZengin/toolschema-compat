@@ -368,3 +368,99 @@ def test_audit_regressions_idempotency_and_nested_compositions() -> None:
         "nullable": True,
     }
     assert "required" not in fixed_gemini["properties"]["orphan_only_obj"]
+
+    # 2. Nested allOf inside allOf and closed empty objects without silent mutation
+    nested_allof_in_branch: dict[str, Any] = {
+        "type": "object",
+        "properties": {
+            "deep": {
+                "allOf": [
+                    {
+                        "allOf": [
+                            {"type": "object", "properties": {"k1": {"type": "string"}}},
+                            {"type": "object", "properties": {"k2": {"type": "integer"}}},
+                        ]
+                    }
+                ]
+            }
+        },
+        "required": ["deep"],
+    }
+    for target in SUPPORTED_TARGETS:
+        fixed_deep, _ = fix_schema(nested_allof_in_branch, target)
+        assert check_schema(fixed_deep, target) == []
+        fixed_deep2, changes_deep2 = fix_schema(fixed_deep, target)
+        assert changes_deep2 == []
+        assert fixed_deep2 == fixed_deep
+
+    closed_anthropic = {"type": "object", "additionalProperties": False}
+    fixed_closed_anth, changes_closed_anth = fix_schema(closed_anthropic, "anthropic")
+    assert changes_closed_anth == []
+    assert fixed_closed_anth == closed_anthropic
+
+    closed_without_props_strict = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [],
+    }
+    fixed_closed_strict, changes_closed_strict = fix_schema(
+        closed_without_props_strict, "openai-strict"
+    )
+    assert len(changes_closed_strict) == 1
+    assert fixed_closed_strict["properties"] == {}
+    assert check_schema(fixed_closed_strict, "openai-strict") == []
+
+    # 3. Tuple items, parent-level allOf merge, combined oneOf+anyOf, and mixed tools list
+    advanced_edges: dict[str, Any] = {
+        "type": "object",
+        "properties": {
+            "tuple_arr": {
+                "type": "array",
+                "items": [{"type": "string", "pattern": "^x$"}, True],
+            },
+            "parent_and_allof": {
+                "type": "object",
+                "properties": {"base": {"type": "string"}},
+                "required": ["base"],
+                "allOf": [
+                    "not-a-dict-branch",
+                    {"allOf": [], "properties": {"extra": {"type": "integer"}}},
+                    {
+                        "properties": {"base": {"pattern": "^a$"}},
+                        "required": ["extra"],
+                    },
+                ],
+            },
+            "combined_oneof_anyof": {
+                "anyOf": ["non-dict-branch", {"type": "string"}],
+                "oneOf": [{"type": "integer"}],
+            },
+            "opt_single_anyof_desc": {
+                "anyOf": [{"type": "boolean", "description": "Flag desc"}],
+            },
+        },
+        "required": ["tuple_arr", "parent_and_allof", "combined_oneof_anyof"],
+    }
+    fixed_adv, changes_adv = fix_schema(advanced_edges, "openai-strict")
+    assert any(c.lossy for c in changes_adv)
+    assert fixed_adv["properties"]["opt_single_anyof_desc"] == {
+        "type": ["boolean", "null"],
+        "description": "Flag desc",
+    }
+
+    mixed_tools_doc: dict[str, Any] = {
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "fn_no_desc",
+                    "parameters": {"type": "object", "properties": {"a": {"type": "string"}}},
+                },
+            },
+            {"type": "object", "properties": {"raw_tool": {"type": "integer"}}},
+            "non_dict_entry",
+        ]
+    }
+    for env in ("gemini", "gemini-json-schema", "openai", "anthropic"):
+        converted, _ = convert_mcp_tools(mixed_tools_doc, "gemini", envelope=env)
+        assert len(converted["tools"]) == 3

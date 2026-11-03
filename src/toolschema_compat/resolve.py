@@ -49,42 +49,6 @@ def resolve_json_pointer(root: dict[str, Any], ref: str) -> dict[str, Any] | Non
     return None
 
 
-def _detect_ref_cycle(
-    root: dict[str, Any],
-    ref: str,
-    seen: frozenset[str],
-) -> bool:
-    """Check whether following `ref` leads to a cycle in `$ref` targets."""
-    if ref == "#" or ref in seen:
-        return True
-    target = resolve_json_pointer(root, ref)
-    if target is None:
-        return False
-    return _node_has_cycle(root, target, seen | {ref})
-
-
-def _node_has_cycle(
-    root: dict[str, Any],
-    node: Any,
-    seen: frozenset[str],
-) -> bool:
-    """Recursively inspect a resolved node for cyclic `$ref` chains."""
-    if isinstance(node, dict):
-        ref_val = node.get("$ref")
-        if isinstance(ref_val, str) and _detect_ref_cycle(root, ref_val, seen):
-            return True
-        for key, value in node.items():
-            if key in ("$defs", "definitions", "$ref"):
-                continue
-            if _node_has_cycle(root, value, seen):
-                return True
-    elif isinstance(node, list):
-        for item in node:
-            if _node_has_cycle(root, item, seen):
-                return True
-    return False
-
-
 def check_refs(
     schema: dict[str, Any],
     ruleset: RuleSet,
@@ -98,9 +62,19 @@ def check_refs(
     cycle_rule = ruleset.rule_for("ref_cycle")
 
     def _walk(node: Any, path: str, active_refs: frozenset[str]) -> None:
-        if isinstance(node, dict):
+        if isinstance(node, list):
+            for idx, item in enumerate(node):
+                _walk(item, f"{path}[{idx}]", active_refs)
+            return
+
+        if not isinstance(node, dict):
+            return
+
+        current = dict(node)
+        if ruleset.policy.strip_defs:
             for defs_key in ("$defs", "definitions"):
-                if defs_key in node and ruleset.policy.strip_defs:
+                if defs_key in current:
+                    del current[defs_key]
                     issues.append(
                         Issue(
                             rule_id=ref_rule.id,
@@ -115,72 +89,82 @@ def check_refs(
                         )
                     )
 
-            ref_val = node.get("$ref")
-            if "$ref" in node:
-                ref_path = f"{path}.$ref"
-                if not isinstance(ref_val, str):
-                    issues.append(
-                        Issue(
-                            rule_id=cycle_rule.id,
-                            path=ref_path,
-                            message="`$ref` value must be a string JSON Pointer.",
-                            source_url=cycle_rule.source_url,
-                            lossy=True,
-                            keyword="$ref",
-                        )
-                    )
-                else:
-                    resolved = resolve_json_pointer(schema, ref_val)
-                    if resolved is None:
-                        issues.append(
-                            Issue(
-                                rule_id=cycle_rule.id,
-                                path=ref_path,
-                                message=(
-                                    f"Unresolvable or external `$ref` ('{ref_val}') "
-                                    "cannot be inlined losslessly."
-                                ),
-                                source_url=cycle_rule.source_url,
-                                lossy=True,
-                                keyword="$ref",
-                            )
-                        )
-                    elif _detect_ref_cycle(schema, ref_val, active_refs):
-                        issues.append(
-                            Issue(
-                                rule_id=cycle_rule.id,
-                                path=ref_path,
-                                message=(
-                                    f"Cyclic `$ref` ('{ref_val}') detected; "
-                                    "recursive reference must be truncated."
-                                ),
-                                source_url=cycle_rule.source_url,
-                                lossy=True,
-                                keyword="$ref",
-                            )
-                        )
-                    else:
-                        issues.append(
-                            Issue(
-                                rule_id=ref_rule.id,
-                                path=ref_path,
-                                message=(
-                                    f"`$ref` ('{ref_val}') must be inlined for `{ruleset.target}`."
-                                ),
-                                source_url=ref_rule.source_url,
-                                lossy=False,
-                                keyword="$ref",
-                            )
-                        )
-                        _walk(resolved, path, active_refs | {ref_val})
+        if "$ref" in current and ruleset.policy.inline_refs:
+            ref_val = current.pop("$ref")
+            siblings = {k: v for k, v in current.items() if k not in ("$defs", "definitions")}
+            ref_path = f"{path}.$ref"
 
-            for key, value in node.items():
-                if key in ("$defs", "definitions", "$ref"):
-                    continue
+            if not isinstance(ref_val, str):
+                issues.append(
+                    Issue(
+                        rule_id=cycle_rule.id,
+                        path=ref_path,
+                        message="`$ref` value must be a string JSON Pointer.",
+                        source_url=cycle_rule.source_url,
+                        lossy=True,
+                        keyword="$ref",
+                    )
+                )
+                _walk({"type": "object", **siblings}, path, active_refs)
+                return
+
+            if ref_val == "#" or ref_val in active_refs:
+                issues.append(
+                    Issue(
+                        rule_id=cycle_rule.id,
+                        path=ref_path,
+                        message=(
+                            f"Cyclic `$ref` ('{ref_val}') detected; "
+                            "recursive reference must be truncated."
+                        ),
+                        source_url=cycle_rule.source_url,
+                        lossy=True,
+                        keyword="$ref",
+                    )
+                )
+                return
+
+            resolved = resolve_json_pointer(schema, ref_val)
+            if resolved is None:
+                issues.append(
+                    Issue(
+                        rule_id=cycle_rule.id,
+                        path=ref_path,
+                        message=(
+                            f"Unresolvable or external `$ref` ('{ref_val}') "
+                            "cannot be inlined losslessly."
+                        ),
+                        source_url=cycle_rule.source_url,
+                        lossy=True,
+                        keyword="$ref",
+                    )
+                )
+                return
+
+            issues.append(
+                Issue(
+                    rule_id=ref_rule.id,
+                    path=ref_path,
+                    message=f"`$ref` ('{ref_val}') must be inlined for `{ruleset.target}`.",
+                    source_url=ref_rule.source_url,
+                    lossy=False,
+                    keyword="$ref",
+                )
+            )
+            merged = dict(resolved)
+            for k, v in siblings.items():
+                merged[k] = v
+            _walk(merged, path, active_refs | {ref_val})
+            return
+
+        for key, value in current.items():
+            if key in ("$defs", "definitions"):
+                continue
+            if key == "properties" and isinstance(value, dict):
+                for prop_name, prop_schema in value.items():
+                    _walk(prop_schema, f"{path}.properties.{prop_name}", active_refs)
+            else:
                 _walk(value, f"{path}.{key}", active_refs)
-        elif isinstance(node, list):
-            for idx, item in enumerate(node):
-                _walk(item, f"{path}[{idx}]", active_refs)
 
     _walk(schema, "$", frozenset())
     return issues

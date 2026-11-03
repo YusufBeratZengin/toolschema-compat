@@ -125,10 +125,19 @@ def _merge_allof_branches(
                 merged_req.append(r)
 
     lossy = False
-    for branch in branches:
-        if not isinstance(branch, dict):
+    for raw_branch in branches:
+        if not isinstance(raw_branch, dict):
             lossy = True
             continue
+        branch = raw_branch
+        if "allOf" in branch:
+            if isinstance(branch["allOf"], list) and len(branch["allOf"]) > 0:
+                branch, sub_allof_lossy = _merge_allof_branches(branch, branch["allOf"])
+                if sub_allof_lossy:
+                    lossy = True
+            else:
+                branch = {k: v for k, v in branch.items() if k != "allOf"}
+                lossy = True
         for key, value in branch.items():
             if key == "properties" and isinstance(value, dict):
                 for prop_name, prop_val in value.items():
@@ -366,7 +375,7 @@ def _transform_single_schema(
                 else:
                     # Transform non-null branches in place while keeping positions
                     current["anyOf"] = [
-                        {"type": "null"}
+                        copy.deepcopy(b)
                         if _is_null_branch(b)
                         else _transform_node(b, f"{path}.anyOf[{i}]", False)
                         for i, b in enumerate(raw_branches)
@@ -641,54 +650,57 @@ def _transform_single_schema(
             )
 
         # Require additionalProperties: false (OpenAI strict & Anthropic)
-        if policy.require_additional_properties_false and is_object:
+        if (
+            policy.require_additional_properties_false
+            and is_object
+            and current.get("additionalProperties") is not False
+        ):
             if "properties" not in current:
                 current["properties"] = {}
-            if current.get("additionalProperties") is not False:
-                had_explicit_open = (
-                    "additionalProperties" in current
-                    and current["additionalProperties"] is not False
+            had_explicit_open = (
+                "additionalProperties" in current and current["additionalProperties"] is not False
+            )
+            prev_val = current.get("additionalProperties")
+            current["additionalProperties"] = False
+            if had_explicit_open:
+                narrow_rule = ruleset.rule_for("open_object_lossy")
+                changes.append(
+                    Change(
+                        rule_id=narrow_rule.id,
+                        path=f"{path}.additionalProperties",
+                        action="added_additional_properties_false",
+                        message=(
+                            "Overwrote open/map `additionalProperties` "
+                            "with `false` for strict mode."
+                        ),
+                        lossy=True,
+                        source_url=narrow_rule.source_url,
+                        deleted_constraint=(
+                            "additionalProperties" if isinstance(prev_val, dict) else None
+                        ),
+                    )
                 )
-                prev_val = current.get("additionalProperties")
-                current["additionalProperties"] = False
-                if had_explicit_open:
-                    narrow_rule = ruleset.rule_for("open_object_lossy")
-                    changes.append(
-                        Change(
-                            rule_id=narrow_rule.id,
-                            path=f"{path}.additionalProperties",
-                            action="added_additional_properties_false",
-                            message=(
-                                "Overwrote open/map `additionalProperties` "
-                                "with `false` for strict mode."
-                            ),
-                            lossy=True,
-                            source_url=narrow_rule.source_url,
-                            deleted_constraint=(
-                                "additionalProperties" if isinstance(prev_val, dict) else None
-                            ),
-                        )
+            else:
+                open_rule = ruleset.rule_for("open_object")
+                changes.append(
+                    Change(
+                        rule_id=open_rule.id,
+                        path=f"{path}.additionalProperties",
+                        action="added_additional_properties_false",
+                        message="Set `additionalProperties: false` on object schema.",
+                        lossy=False,
+                        source_url=open_rule.source_url,
                     )
-                else:
-                    open_rule = ruleset.rule_for("open_object")
-                    changes.append(
-                        Change(
-                            rule_id=open_rule.id,
-                            path=f"{path}.additionalProperties",
-                            action="added_additional_properties_false",
-                            message="Set `additionalProperties: false` on object schema.",
-                            lossy=False,
-                            source_url=open_rule.source_url,
-                        )
-                    )
+                )
 
         # Require all properties in `required` (OpenAI strict)
-        if (
-            policy.require_all_properties_in_required
-            and is_object
-            and isinstance(current.get("properties"), dict)
-        ):
-            props_map: dict[str, Any] = current["properties"]
+        if policy.require_all_properties_in_required and is_object and "anyOf" not in current:
+            added_empty_props = "properties" not in current
+            if added_empty_props:
+                current["properties"] = {}
+            props_map: dict[str, Any] = (
+                current["properties"] if isinstance(current.get("properties"), dict) else {}
+            )
             existing_req: list[str] = (
                 [str(r) for r in current["required"]]
                 if isinstance(current.get("required"), list)
@@ -717,7 +729,7 @@ def _transform_single_schema(
                         )
                     )
                 current["required"] = list(props_map.keys())
-            elif "required" not in current:
+            elif "required" not in current or added_empty_props:
                 current["required"] = []
                 changes.append(
                     Change(

@@ -172,11 +172,40 @@ def test_check_refs_transitive_and_list_cycle() -> None:
 
     issues = check_refs(schema, ruleset)
     fixed, changes = resolve_refs(schema, ruleset)
-    assert len(issues) == 4
+    assert len(issues) == 5
     assert len(changes) == 5
+    assert [i.path for i in issues] == [c.path for c in changes]
+    assert [i.lossy for i in issues] == [c.lossy for c in changes]
     assert any(i.path == "$.properties.outer.properties.inner.$ref" for i in issues)
-    assert any(i.lossy and i.path == "$.properties.list_cycle.$ref" for i in issues)
+    assert any(i.lossy and i.path == "$.properties.list_cycle.anyOf[0].$ref" for i in issues)
     assert fixed["properties"]["outer"]["properties"]["inner"] == {
         "type": "object",
         "properties": {"val": {"type": "string"}},
     }
+
+
+def test_resolve_refs_policy_disabled_and_strip_defs_disabled() -> None:
+    from dataclasses import replace
+
+    base_ruleset = load_rules("gemini")
+    no_op_policy = replace(base_ruleset.policy, inline_refs=False, strip_defs=False)
+    no_op_ruleset = replace(base_ruleset, policy=no_op_policy)
+
+    schema: dict[str, Any] = {
+        "type": "object",
+        "properties": {"x": {"$ref": "#/$defs/X"}},
+        "$defs": {"X": {"type": "string"}},
+    }
+    assert check_refs(schema, no_op_ruleset) == []
+    fixed_noop, changes_noop = resolve_refs(schema, no_op_ruleset)
+    assert changes_noop == []
+    assert fixed_noop == schema
+
+    keep_defs_policy = replace(base_ruleset.policy, inline_refs=True, strip_defs=False)
+    keep_defs_ruleset = replace(base_ruleset, policy=keep_defs_policy)
+    issues_keep = check_refs(schema, keep_defs_ruleset)
+    fixed_keep, changes_keep = resolve_refs(schema, keep_defs_ruleset)
+    assert len(issues_keep) == 1
+    assert len(changes_keep) == 1
+    assert "$defs" in fixed_keep
+    assert fixed_keep["properties"]["x"] == {"type": "string"}
