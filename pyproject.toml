@@ -1,0 +1,94 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "toolschema-compat"
+version = "0.1.0"
+description = "Audit and safely transform tool (function calling) JSON Schemas for Gemini, OpenAI strict, and Anthropic with explicit lossy-change reporting."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+    { name = "Yusuf Berat Zengin" }
+]
+keywords = [
+    "json-schema",
+    "function-calling",
+    "gemini",
+    "openai",
+    "anthropic",
+    "mcp",
+    "model-context-protocol",
+    "llm-tools",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities",
+    "Typing :: Typed",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.5",
+    "mypy>=1.10",
+]
+
+[project.scripts]
+toolschema-compat = "toolschema_compat.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/YusufBeratZengin/toolschema-compat"
+Repository = "https://github.com/YusufBeratZengin/toolschema-compat"
+Issues = "https://github.com/YusufBeratZengin/toolschema-compat/issues"
+Changelog = "https://github.com/YusufBeratZengin/toolschema-compat/blob/main/CHANGELOG.md"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+toolschema_compat = ["py.typed", "rules/*.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "network: marks tests that require network access (deselected by default)",
+]
+filterwarnings = [
+    "error",
+]
+
+[tool.coverage.run]
+source = ["toolschema_compat"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+mypy_path = "src"
+packages = ["toolschema_compat"]
