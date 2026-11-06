@@ -28,6 +28,511 @@ def test_minimum_eight_fixtures_per_target() -> None:
     assert len(ANTHROPIC_FIXTURES) >= 8
 
 
+EXPECTED_FIXTURE_OUTCOMES: dict[tuple[str, str], dict[str, Any]] = {
+    # --- GEMINI ---
+    ("gemini", "1_mcp_defs_and_ref"): {
+        "lossless": True,
+        "rules": {"GEMINI_REF_DEFS"},
+        "deleted": set(),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "object",
+                    "properties": {
+                        "term": {"type": "string"},
+                        "limit": {"type": "integer"},
+                    },
+                    "required": ["term"],
+                }
+            },
+            "required": ["query"],
+        },
+    },
+    ("gemini", "2_workspace_type_array"): {
+        "lossless": True,
+        "rules": {"GEMINI_TYPE_ARRAY"},
+        "deleted": set(),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "calendar_id": {"type": "string", "nullable": True},
+                "max_results": {"anyOf": [{"type": "integer"}, {"type": "string"}]},
+            },
+            "required": ["calendar_id"],
+        },
+    },
+    ("gemini", "3_thclaws_additional_props_and_meta"): {
+        "lossless": False,
+        "rules": {"GEMINI_UNSUPPORTED_KEYWORD", "GEMINI_ADDITIONAL_PROPERTIES"},
+        "deleted": {"additionalProperties"},
+        "schema": {
+            "type": "object",
+            "properties": {"command": {"type": "string"}},
+            "required": ["command"],
+        },
+    },
+    ("gemini", "4_pydantic_anyof_null_optional"): {
+        "lossless": True,
+        "rules": {"GEMINI_ANYOF_NULL", "GEMINI_UNSUPPORTED_KEYWORD"},
+        "deleted": set(),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "page_token": {
+                    "type": "string",
+                    "nullable": True,
+                    "description": "Pagination token from previous call.",
+                },
+                "timeout_ms": {
+                    "anyOf": [{"type": "integer"}, {"type": "number"}],
+                    "nullable": True,
+                },
+            },
+            "required": ["page_token"],
+        },
+    },
+    ("gemini", "5_const_and_oneof_discriminated"): {
+        "lossless": False,
+        "rules": {"GEMINI_CONST", "GEMINI_ONEOF"},
+        "deleted": set(),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "api_version": {"type": "string", "enum": ["v1"]},
+                "mode": {
+                    "anyOf": [
+                        {"type": "string", "enum": ["fast", "accurate"]},
+                        {"type": "integer"},
+                    ]
+                },
+            },
+            "required": ["api_version", "mode"],
+        },
+    },
+    ("gemini", "6_unsupported_regex_and_email_format"): {
+        "lossless": False,
+        "rules": {"GEMINI_UNSUPPORTED_CONSTRAINT", "GEMINI_UNSUPPORTED_FORMAT"},
+        "deleted": {"pattern", "minLength", "maxLength", "format"},
+        "schema": {
+            "type": "object",
+            "properties": {
+                "slug": {"type": "string"},
+                "contact_email": {"type": "string"},
+                "created_at": {"type": "string", "format": "date-time"},
+            },
+            "required": ["slug", "contact_email"],
+        },
+    },
+    ("gemini", "7_recursive_tree_node"): {
+        "lossless": False,
+        "rules": {"GEMINI_REF_DEFS", "GEMINI_REF_CYCLE"},
+        "deleted": set(),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "root": {
+                    "type": "object",
+                    "properties": {
+                        "label": {"type": "string"},
+                        "parent": {"type": "object", "description": "Parent node"},
+                    },
+                    "required": ["label"],
+                }
+            },
+            "required": ["root"],
+        },
+    },
+    ("gemini", "8_parameters_json_schema_envelope"): {
+        "lossless": True,
+        "rules": {"GEMINI_REF_DEFS", "GEMINI_ORPHAN_REQUIRED"},
+        "deleted": set(),
+        "schema": {
+            "name": "list_drive_files",
+            "description": "List files using Gemini parametersJsonSchema field.",
+            "parametersJsonSchema": {
+                "type": "object",
+                "properties": {
+                    "folder": {
+                        "type": "object",
+                        "properties": {"folder_id": {"type": "string"}},
+                        "required": ["folder_id"],
+                    }
+                },
+                "required": ["folder"],
+            },
+        },
+    },
+    # --- OPENAI STRICT ---
+    ("openai-strict", "1_prism_missing_additional_props"): {
+        "lossless": True,
+        "rules": {"OPENAI_STRICT_ADDITIONAL_PROPERTIES"},
+        "deleted": set(),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "location": {"type": "string"},
+                "coordinates": {
+                    "type": "object",
+                    "properties": {
+                        "lat": {"type": "number"},
+                        "lon": {"type": "number"},
+                    },
+                    "required": ["lat", "lon"],
+                    "additionalProperties": False,
+                },
+            },
+            "required": ["location", "coordinates"],
+            "additionalProperties": False,
+        },
+    },
+    ("openai-strict", "2_archon_optional_not_in_required"): {
+        "lossless": True,
+        "rules": {"OPENAI_STRICT_REQUIRED_PROPERTIES"},
+        "deleted": set(),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string"},
+                "include_archived": {"type": ["boolean", "null"]},
+                "tag_filter": {
+                    "type": ["string", "null"],
+                    "enum": ["bug", "feature", None],
+                },
+            },
+            "required": ["project_id", "include_archived", "tag_filter"],
+            "additionalProperties": False,
+        },
+    },
+    ("openai-strict", "3_defs_ref_with_siblings"): {
+        "lossless": True,
+        "rules": {"OPENAI_STRICT_REF_DEFS", "OPENAI_STRICT_ADDITIONAL_PROPERTIES"},
+        "deleted": set(),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "object",
+                    "properties": {"handle": {"type": "string"}},
+                    "required": ["handle"],
+                    "description": "Primary document author.",
+                    "additionalProperties": False,
+                }
+            },
+            "required": ["author"],
+            "additionalProperties": False,
+        },
+    },
+    ("openai-strict", "4_openapi_nullable_keyword"): {
+        "lossless": True,
+        "rules": {"OPENAI_STRICT_NULLABLE_KEYWORD"},
+        "deleted": set(),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "nickname": {"type": ["string", "null"]},
+                "role": {
+                    "type": ["string", "null"],
+                    "enum": ["admin", "viewer", None],
+                },
+            },
+            "required": ["nickname", "role"],
+            "additionalProperties": False,
+        },
+    },
+    ("openai-strict", "5_string_and_numeric_constraints"): {
+        "lossless": False,
+        "rules": {"OPENAI_STRICT_UNSUPPORTED_CONSTRAINT"},
+        "deleted": {
+            "pattern",
+            "minLength",
+            "maxLength",
+            "format",
+            "minimum",
+            "maximum",
+            "multipleOf",
+        },
+        "schema": {
+            "type": "object",
+            "properties": {
+                "username": {"type": "string"},
+                "webhook_url": {"type": "string"},
+                "score": {"type": "integer"},
+            },
+            "required": ["username", "webhook_url", "score"],
+            "additionalProperties": False,
+        },
+    },
+    ("openai-strict", "6_oneof_const_and_allof"): {
+        "lossless": False,
+        "rules": {
+            "OPENAI_STRICT_CONST",
+            "OPENAI_STRICT_ONEOF",
+            "OPENAI_STRICT_ALLOF",
+            "OPENAI_STRICT_ADDITIONAL_PROPERTIES",
+        },
+        "deleted": set(),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": ["report"]},
+                "target": {"anyOf": [{"type": "string"}, {"type": "integer"}]},
+                "merged": {
+                    "type": "object",
+                    "properties": {
+                        "a": {"type": "string"},
+                        "b": {"type": "integer"},
+                    },
+                    "required": ["a", "b"],
+                    "additionalProperties": False,
+                },
+            },
+            "required": ["kind", "target", "merged"],
+            "additionalProperties": False,
+        },
+    },
+    ("openai-strict", "7_open_map_additional_props_schema"): {
+        "lossless": False,
+        "rules": {"OPENAI_STRICT_MAP_NARROWED", "OPENAI_STRICT_REQUIRED_PROPERTIES"},
+        "deleted": {"additionalProperties"},
+        "schema": {
+            "type": "object",
+            "properties": {
+                "headers": {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": False,
+                    "required": [],
+                }
+            },
+            "required": ["headers"],
+            "additionalProperties": False,
+        },
+    },
+    ("openai-strict", "8_cyclic_comment_thread_envelope"): {
+        "lossless": False,
+        "rules": {
+            "OPENAI_STRICT_REF_DEFS",
+            "OPENAI_STRICT_REF_CYCLE",
+            "OPENAI_STRICT_ADDITIONAL_PROPERTIES",
+            "OPENAI_STRICT_REQUIRED_PROPERTIES",
+        },
+        "deleted": set(),
+        "schema": {
+            "type": "function",
+            "function": {
+                "name": "post_comment_thread",
+                "description": "Create a nested comment thread.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "comment": {
+                            "type": "object",
+                            "properties": {
+                                "body": {"type": "string"},
+                                "reply": {
+                                    "type": "object",
+                                    "properties": {
+                                        "parent": {
+                                            "type": "object",
+                                            "properties": {},
+                                            "additionalProperties": False,
+                                            "required": [],
+                                        }
+                                    },
+                                    "required": ["parent"],
+                                    "additionalProperties": False,
+                                },
+                            },
+                            "required": ["body", "reply"],
+                            "additionalProperties": False,
+                        }
+                    },
+                    "required": ["comment"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+    },
+    # --- ANTHROPIC ---
+    ("anthropic", "1_missing_root_type_object"): {
+        "lossless": True,
+        "rules": {"ANTHROPIC_ROOT_OBJECT", "ANTHROPIC_ADDITIONAL_PROPERTIES"},
+        "deleted": set(),
+        "schema": {
+            "type": "object",
+            "properties": {"ticker": {"type": "string"}},
+            "required": ["ticker"],
+            "additionalProperties": False,
+        },
+    },
+    ("anthropic", "2_top_level_union_root"): {
+        "lossless": False,
+        "rules": {"ANTHROPIC_ROOT_OBJECT"},
+        "deleted": set(),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "value": {
+                    "anyOf": [
+                        {
+                            "type": "object",
+                            "properties": {"id": {"type": "integer"}},
+                            "required": ["id"],
+                            "additionalProperties": False,
+                        },
+                        {
+                            "type": "object",
+                            "properties": {"slug": {"type": "string"}},
+                            "required": ["slug"],
+                            "additionalProperties": False,
+                        },
+                    ]
+                }
+            },
+            "required": ["value"],
+            "additionalProperties": False,
+        },
+    },
+    ("anthropic", "3_defs_diamond_refs"): {
+        "lossless": True,
+        "rules": {"ANTHROPIC_REF_DEFS", "ANTHROPIC_ADDITIONAL_PROPERTIES"},
+        "deleted": set(),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "source_endpoint": {
+                    "type": "object",
+                    "properties": {
+                        "host": {"type": "string"},
+                        "port": {"type": "integer"},
+                    },
+                    "required": ["host", "port"],
+                    "additionalProperties": False,
+                },
+                "destination_endpoint": {
+                    "type": "object",
+                    "properties": {
+                        "host": {"type": "string"},
+                        "port": {"type": "integer"},
+                    },
+                    "required": ["host", "port"],
+                    "additionalProperties": False,
+                },
+            },
+            "required": ["source_endpoint", "destination_endpoint"],
+            "additionalProperties": False,
+        },
+    },
+    ("anthropic", "4_openapi_nullable_and_const"): {
+        "lossless": True,
+        "rules": {"ANTHROPIC_CONST", "ANTHROPIC_NULLABLE_KEYWORD"},
+        "deleted": set(),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "protocol": {"type": "string", "enum": ["https"]},
+                "reason": {"type": ["string", "null"]},
+            },
+            "required": ["protocol"],
+            "additionalProperties": False,
+        },
+    },
+    ("anthropic", "5_oneof_and_allof_composition"): {
+        "lossless": False,
+        "rules": {
+            "ANTHROPIC_ONEOF",
+            "ANTHROPIC_ALLOF",
+            "ANTHROPIC_ADDITIONAL_PROPERTIES",
+        },
+        "deleted": set(),
+        "schema": {
+            "type": "object",
+            "properties": {
+                "identifier": {"anyOf": [{"type": "string"}, {"type": "integer"}]},
+                "config": {
+                    "type": "object",
+                    "properties": {
+                        "retries": {"type": "integer"},
+                        "verbose": {"type": "boolean"},
+                    },
+                    "additionalProperties": False,
+                },
+            },
+            "required": ["identifier"],
+            "additionalProperties": False,
+        },
+    },
+    ("anthropic", "6_validation_constraints_pattern_format"): {
+        "lossless": False,
+        "rules": {"ANTHROPIC_UNSUPPORTED_CONSTRAINT"},
+        "deleted": {
+            "format",
+            "pattern",
+            "minLength",
+            "minItems",
+            "maxItems",
+            "uniqueItems",
+        },
+        "schema": {
+            "type": "object",
+            "properties": {
+                "trace_id": {"type": "string"},
+                "tags": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["trace_id"],
+            "additionalProperties": False,
+        },
+    },
+    ("anthropic", "7_open_object_and_orphan_required"): {
+        "lossless": False,
+        "rules": {"ANTHROPIC_ORPHAN_REQUIRED", "ANTHROPIC_MAP_NARROWED"},
+        "deleted": set(),
+        "schema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    ("anthropic", "8_recursive_category_definitions"): {
+        "lossless": False,
+        "rules": {
+            "ANTHROPIC_REF_DEFS",
+            "ANTHROPIC_REF_CYCLE",
+            "ANTHROPIC_ADDITIONAL_PROPERTIES",
+        },
+        "deleted": set(),
+        "schema": {
+            "name": "classify_item",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "category": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string"},
+                            "subcategories": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {},
+                                    "additionalProperties": False,
+                                },
+                            },
+                        },
+                        "required": ["title"],
+                        "additionalProperties": False,
+                    }
+                },
+                "required": ["category"],
+                "additionalProperties": False,
+            },
+        },
+    },
+}
+
+
 @pytest.mark.parametrize(
     ("target", "fixture_name", "schema"),
     [
@@ -42,21 +547,28 @@ def test_target_fixtures_detected_fixed_and_idempotent(
     schema: dict[str, Any],
 ) -> None:
     original_copy = copy.deepcopy(schema)
+    expected = EXPECTED_FIXTURE_OUTCOMES[(target, fixture_name)]
 
-    # 1. Must detect at least one compatibility issue on the broken fixture
+    # 1. Must detect expected compatibility issues on the broken fixture
     issues = check_schema(schema, target)
     assert len(issues) >= 1, f"Expected issues for {target}/{fixture_name}"
     assert schema == original_copy, "check_schema must not mutate input"
+    assert {i.rule_id for i in issues} == expected["rules"]
 
     for issue in issues:
         assert issue.rule_id
         assert issue.path.startswith("$")
         assert issue.source_url.startswith("https://")
 
-    # 2. Must fix all issues in a single call
+    # 2. Must fix all issues in a single call and match independent expected outcome
     fixed1, changes1 = fix_schema(schema, target)
     assert len(changes1) == len(issues)
     assert schema == original_copy, "fix_schema must not mutate input"
+    assert is_lossless(changes1) is expected["lossless"]
+    assert {c.rule_id for c in changes1} == expected["rules"]
+    deleted = {c.deleted_constraint for c in changes1 if c.deleted_constraint}
+    assert deleted == expected["deleted"]
+    assert fixed1 == expected["schema"]
 
     for change in changes1:
         assert change.rule_id

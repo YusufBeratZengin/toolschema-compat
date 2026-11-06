@@ -21,7 +21,9 @@ toolschema-compat check examples/tools.json --target gemini
 toolschema-compat fix examples/tools.json --target gemini
 ```
 
-### Gerçek Terminal Çıktısı
+### Örnek Terminal Çıktısı (`examples/tools.json` Üzerinde Doğrulanmış)
+
+Aşağıdaki CLI çıktısı [`examples/tools.json`](./examples/tools.json) dosyası üzerinde `toolschema-compat` çalıştırılarak üretilmiştir ve test paketinde (`tests/test_cli_and_report.py`) otomatik olarak doğrulanır:
 
 ```text
 $ toolschema-compat check examples/tools.json --target gemini

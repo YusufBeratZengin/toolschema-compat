@@ -188,6 +188,17 @@ def _handle_check(args: argparse.Namespace) -> int:
 
 
 def _handle_fix(args: argparse.Namespace) -> int:
+    out_path = Path(args.output) if args.output else None
+    rep_path = Path(args.report) if args.report else None
+    if (
+        out_path is not None
+        and rep_path is not None
+        and out_path.expanduser().resolve() == rep_path.expanduser().resolve()
+    ):
+        raise ValueError(
+            f"--output and --report must point to different file paths, got '{args.output}'."
+        )
+
     schema = _read_json_input(args.input)
     fixed_schema, changes = convert_mcp_tools(
         schema,
@@ -196,16 +207,14 @@ def _handle_fix(args: argparse.Namespace) -> int:
     )
     report: FixReport = build_fix_report(args.target, changes, schema=fixed_schema)
 
-    if args.output:
-        out_path = Path(args.output)
+    if out_path is not None:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(
             json.dumps(fixed_schema, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
 
-    if args.report:
-        rep_path = Path(args.report)
+    if rep_path is not None:
         rep_path.parent.mkdir(parents=True, exist_ok=True)
         rep_path.write_text(
             report.to_json(indent=2, include_schema=False) + "\n",

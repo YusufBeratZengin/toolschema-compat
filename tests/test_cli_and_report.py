@@ -218,3 +218,57 @@ def test_cli_fix_text_with_output_file(
     assert "[FIXED] target=openai-strict" in stdout
     assert "--- Fixed Schema ---" not in stdout
     assert out_file.is_file()
+
+
+def test_cli_fix_rejects_colliding_output_and_report_paths(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    in_file = tmp_path / "in.json"
+    original_content = json.dumps(
+        {"type": "object", "properties": {"a": {"type": "string"}}},
+        indent=2,
+    )
+    in_file.write_text(original_content, encoding="utf-8")
+
+    same_file = tmp_path / "same_target.json"
+    rc = main(
+        [
+            "fix",
+            str(in_file),
+            "--target",
+            "openai-strict",
+            "--output",
+            str(same_file),
+            "--report",
+            str(tmp_path / "." / "same_target.json"),
+        ]
+    )
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "--output and --report" in err
+    assert not same_file.exists()
+
+
+def test_readme_sample_terminal_output_verified_against_examples_tools_json(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    examples_file = repo_root / "examples" / "tools.json"
+    readme_en = (repo_root / "README.md").read_text(encoding="utf-8")
+    readme_tr = (repo_root / "README.tr.md").read_text(encoding="utf-8")
+
+    rc_check = main(["check", str(examples_file), "--target", "gemini"])
+    assert rc_check == 1
+    check_stdout = capsys.readouterr().out.strip()
+    assert check_stdout in readme_en
+    assert check_stdout in readme_tr
+
+    fixed_out = tmp_path / "fixed-gemini.json"
+    rc_fix = main(["fix", str(examples_file), "--target", "gemini", "-o", str(fixed_out)])
+    assert rc_fix == 0
+    fix_lines = capsys.readouterr().out.strip().splitlines()
+    for header_line in fix_lines[:4]:
+        assert header_line in readme_en
+        assert header_line in readme_tr
